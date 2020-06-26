@@ -66,16 +66,22 @@ icl$trap <- paste0(icl$plot, "_", icl$trap)
 
 plot(icl$ud5_50m_buffer, icl$acc_mi)
 
-model50 <- lmer(log(acc_mi) ~ scale(ud5_50m_buffer) + (1|obs_year) + (1|plot),
-                data = icl)
+## Make two log-normal mixed-models and compare AIC:
+model50.1 <- lmer(log(acc_mi) ~ scale(ud5_50m_buffer) + (1|obs_year) + (1|plot),
+                  data = icl)
+model50.2 <- lmer(log(acc_mi) ~ poly(scale(ud5_50m_buffer), 2) + 
+                                (1|obs_year) + (1|plot),
+                  data = icl)
 
 par(mfrow = c(1,2))
-qqnorm(resid(model50)); qqline(resid(model50)) 
-hist(resid(model50))
+qqnorm(resid(model50.2)); qqline(resid(model50.2)) 
+hist(resid(model50.2))
 
 dir.create("results")
-capture.output(summary(model50), print("R2:"), r.squaredLR(model50)) %>% 
-  write(., "results/th_50m_buffer.txt")
+capture.output(model.sel(model50.1, model50.2), 
+               summary(model50.2), 
+               print("R2:"), 
+               r.squaredGLMM(model50.2)) %>% write(., "results/th50m_buffer.txt")
 
 ## 5. Anayse if the forest density around the trap affeects the insect cover in 
 ##    open forests:
@@ -85,19 +91,75 @@ icl5 <- icl[icl$ud5_50m_buffer < mean(lidar$ud5_50m_buffer), ]
 
 plot(icl5$ud5_5m_buffer, icl5$acc_mi)
 
-model5 <- lmer(log(acc_mi) ~ scale(ud5_5m_buffer) + (1|obs_year) + (1|plot),
-               data = icl5)
+## Make two log-normal mixed-models and compare AIC:
+model5.1 <- lmer(log(acc_mi) ~ scale(ud5_5m_buffer) + (1|obs_year) + (1|plot),
+                 data = icl5)
+model5.2 <- lmer(log(acc_mi) ~ poly(scale(ud5_5m_buffer), 2) + 
+                               (1|obs_year) + (1|plot),
+                 data = icl5)
 
 par(mfrow = c(1,2))
-qqnorm(resid(model5)); qqline(resid(model5)) 
-hist(resid(model5))
+qqnorm(resid(model5.2)); qqline(resid(model5.2)) 
+hist(resid(model5.2))
 
 dir.create("results")
-capture.output(summary(model5), print("R2:"), r.squaredLR(model5)) %>% 
-  write(., "results/th_5m_buffer.txt")
+capture.output(model.sel(model5.1,  model5.2),
+               summary(model5.2), 
+               print("R2:"), 
+               r.squaredGLMM(model5.2)) %>% write(., "results/th5m_buffer.txt")
 
 ## 6. Make a figure illustrating the results -----------------------------------
 
-g1 <- ggplot(icl, aes(ud5_5m_buffer, acc_mi*))
+## Combine 50m and 5m buffer data set:
+D50 <- cbind(icl[, -5], 
+             exp(predict(model50.2, re.form = NA)), 
+             "buffer" = "50m around trap")
+colnames(D50)[5] <- "ud5"
+D5 <- cbind(icl5[, -6], 
+            exp(predict(model5.2, re.form = NA)), 
+            "buffer" = "5m around trap")
+colnames(D5)[5] <- "ud5"
+D <- rbind(D50, D5)
+D$open <- ifelse(D$trap %in% D$trap[D$buffer == "5m around trap"], 
+                 "Open, 50m around trap",
+                 "Dense, 50m around trap")
+
+## Annotattion data:
+ann_text <- data.frame(ud5 = c(1), 
+                       acc_mi = 0.4, y
+                       open = NA,
+                       buffer = factor("50m around trap",
+                                       levels = c("50m around trap", 
+                                                  "5m around trap")))
+
+## Make figure:
+G <- ggplot(D, aes(x = ud5, y = acc_mi, colour = open)) +
+     geom_point(size = 4, alpha = 0.7) +
+     geom_line(aes(y = V2), size = 4, color = "black") +
+     facet_grid(. ~ buffer, scales = "free_x") +
+     xlab("Understory density (% laser returns 0.5-5m above ground)") +
+     ylab("Mean increment (%trap cover) per day") +
+     coord_trans(y = "log") +
+ # geom_text(data = ann_text, label = "P(x) < .001 | P(x^2) = .76") +
+     # annotate("text", 
+     #          x = 2 , y = 0.4, 
+     #          size = 10,
+     #          label = "P(x) < .001 | P(x^2) = .76") +
+     # labs(tag = "A") +
+     # annotate("text", 
+     #          x = 5.5 , y = 0.8, 
+     #          size = 10,
+     #          label = "P(x) = .74 | P(x^2) = .23") +
+     scale_color_manual(breaks = c("Open, 50m around trap", 
+                                   "Dense, 50m around trap"),
+                        values = c("darkgreen", "black")) +
+     theme_light(40) +
+     theme(legend.position = "top",#c(0.36, 0.95),
+           legend.title = element_blank(),
+           legend.direction = "horizontal")
+  
+png("figures/trap_hapiness.png", 12500/4, 10000/4, "px", res = 600/4)
+G
+dev.off()
 
 ## -------------------------------END-------------------------------------------
