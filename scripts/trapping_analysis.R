@@ -124,41 +124,35 @@ D$open <- ifelse(D$trap %in% D$trap[D$buffer == "5m around trap"],
                  "Open, 50m around trap",
                  "Dense, 50m around trap")
 
-## Annotattion data:
-ann_text <- data.frame(ud5 = c(1), 
-                       acc_mi = 0.4, y
+## Annotation data:
+ann_text <- data.frame(ud5 = c(21.5, 16.5), 
+                       acc_mi = c(0.088, 0.12),
                        open = NA,
-                       buffer = factor("50m around trap",
-                                       levels = c("50m around trap", 
-                                                  "5m around trap")))
+                       buffer = factor(unique(D$buffer)))
 
 ## Make figure:
 G <- ggplot(D, aes(x = ud5, y = acc_mi, colour = open)) +
-     geom_point(size = 4, alpha = 0.7) +
-     geom_line(aes(y = V2), size = 4, color = "black") +
+     geom_point(size = 10, alpha = 0.6) +
+     geom_line(aes(y = V2), size = 6, color = "black") +
      facet_grid(. ~ buffer, scales = "free_x") +
      xlab("Understory density (% laser returns 0.5-5m above ground)") +
      ylab("Mean increment (%trap cover) per day") +
      coord_trans(y = "log") +
- # geom_text(data = ann_text, label = "P(x) < .001 | P(x^2) = .76") +
-     # annotate("text", 
-     #          x = 2 , y = 0.4, 
-     #          size = 10,
-     #          label = "P(x) < .001 | P(x^2) = .76") +
-     # labs(tag = "A") +
-     # annotate("text", 
-     #          x = 5.5 , y = 0.8, 
-     #          size = 10,
-     #          label = "P(x) = .74 | P(x^2) = .23") +
-     scale_color_manual(breaks = c("Open, 50m around trap", 
+     scale_color_manual(breaks = c("Open, 50m around trap",
                                    "Dense, 50m around trap"),
-                        values = c("darkgreen", "black")) +
+                        values = c("orange", "darkgreen")) +
+     geom_text(data = ann_text, 
+               label = c("P(x) < .001,  P(x2) = .76", 
+                         "P(x) = .74, P(x2) = .23"), 
+               show.legend = FALSE,
+               size = 11,
+               colour = "black") +
      theme_light(40) +
      theme(legend.position = "top",#c(0.36, 0.95),
            legend.title = element_blank(),
            legend.direction = "horizontal")
   
-png("figures/trap_hapiness.png", 12500/4, 10000/4, "px", res = 600/4)
+png("figures/trap_hapiness.png", 15000/4, 10000/4, "px", res = 600/4)
 G
 dev.off()
 
