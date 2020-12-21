@@ -2,7 +2,7 @@
 ## in the BACI experiment
 ##
 ## First edit: 20200218
-## Last edit: 20200502
+## Last edit: 20201221
 ##
 ## Author: Julian Klein
 
@@ -19,10 +19,10 @@ require(dplyr)
 ## 2. Load and explore data ----------------------------------------------------
 
 dir("data")
-i_2017 <- read.csv("data/insects_2017.csv")
-i_2018 <- read.csv("data/insects_2018.csv")
-i_2019 <- read.csv("data/insects_2019.csv")
-forest <- read.csv("clean/forest_experiment_data_JAGS.csv")
+i_2017 <- read.csv("data/insects_pl_2017.csv")
+i_2018 <- read.csv("data/insects_pl_2018.csv")
+i_2019 <- read.csv("data/insects_pl_2019.csv")
+forest <- read.csv("data/forest_data_uppland_plot.csv")
 
 ## 3. Prepare insect data and extract acc. cover and date of highest -----------
 ##    increase and merge with forest data increase
@@ -46,19 +46,15 @@ i_out <- i_comb[, list("acc_mi" = mean(mean_incr),
 
 ## Merge with forest data required for the BACI analysis:
 
-if_comb <- merge(i_out, forest[, c("plot", "block", "year", "treatment", 
-                                   "experiment")], 
-                 by.x = c("plot", "obs_year"), 
-                 by.y = c("plot", "year"))
+if_comb <- merge(i_out, 
+                 unique(forest[, c("plot", "block", "effect_year", "treatment")]), 
+                 by = "plot")
 
 ## 4. Prepare the model data, the inits and load the model ---------------------
 
-## Adjust response, treatment and reference here !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+## Adjust response here !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 response <- "cover"
 # response <- "pm"
-levels(forest$treatment)
-# eval <- c(1, 2, 4); ref <- 3
-eval <- c(2, 4); ref <- 1
 ## !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 ## Create model data set:
@@ -66,12 +62,12 @@ resp <- if(response == "cover") if_comb$acc_mi*100 else if_comb$pm_max
 data <- list(nobs = nrow(if_comb),
              block = as.numeric(if_comb$block),
              resp = resp,
-             exp = ifelse(if_comb$experiment == "before", 1, 2),
+             exp = ifelse(if_comb$obs_year < if_comb$effect_year, 1, 2),
              treat = as.numeric(if_comb$treatment),
              year_2018 = ifelse(if_comb$obs_year == 2018, 1, 0),
              year_2019 = ifelse(if_comb$obs_year == 2019, 1, 0),
-             eval = eval,
-             ref = ref) 
+             eval = c(2, 4),
+             ref = 1)
 
 ## Create inits:
 inits <- list(list(a = matrix(0, max(data$treat), max(data$exp)),
@@ -101,11 +97,11 @@ jm <- jags.model(model,
                  inits = inits, 
                  n.chains = 3) 
 
-burn.in <-  250000
+burn.in <-  50000
 update(jm, n.iter = burn.in) 
 
 samples <- 20000
-n.thin <- 20
+n.thin <- 16
 
 zc <- coda.samples(jm,
                    # variable.names = "sigma_block",
@@ -133,80 +129,73 @@ capture.output(raftery.diag(zc),
                cor(data.frame(combine.mcmc(zc)))) %>% 
   write(., paste0("results/diagnostics_insect_", response, ".txt"))
 
-# ## Produce validation metrics: 
-# zj_val <- jags.samples(jm, 
-#                        variable.names = c("mean_obs", "mean_sim","p_mean", 
-#                                           "cv_obs", "cv_sim", "p_cv", 
-#                                           "fit", "fit_sim", "p_fit"), 
-#                        n.iter = samples, 
-#                        thin = n.thin)
-# 
-# ## Fit of mean:
-# plot(zj_val$mean_obs, 
-#      zj_val$mean_sim, 
-#      xlab = "mean real", 
-#      ylab = "mean simulated", 
-#      cex = .05)
-# abline(0, 1)
-# p <- summary(zj_val$p_mean, mean)
-# text(x = 0.6, y = 0.7, paste0("P=", round(as.numeric(p[1]), 4)), cex = 1.5)
-# 
-# ## Fit of variance:
-# plot(zj_val$cv_obs, 
-#      zj_val$cv_sim, 
-#      xlab = "cv real", 
-#      ylab = "cv simulated", 
-#      cex = .05)
-# abline(0,1)
-# p <- summary(zj_val$p_cv, mean)
-# text(x = 1, y = .8, paste0("P=", round(as.numeric(p[1]), 4)), cex = 1.5)
-# 
-# ## Overall fit:
-# plot(zj_val$fit, 
-#      zj_val$fit_sim, 
-#      xlab = "ssq real", 
-#      ylab = "ssq simulated", 
-#      cex = .05)
-# abline(0,1)
-# p <- summary(zj_val$p_fit, mean)
-# text(x = 0.2, y = 0.4, paste0("P=", round(as.numeric(p[1]), 4)), cex = 1.5)
-
-## 6. Export BACI indicators ---------------------------------------------------
-
-zj_out <- coda.samples(jm, 
-                       variable.names = c("BACI", "CI_div", "CI_ctr"),
-                       n.iter = samples, 
+## Produce validation metrics:
+zj_val <- jags.samples(jm,
+                       variable.names = c("mean_obs", "mean_sim","p_mean",
+                                          "cv_obs", "cv_sim", "p_cv",
+                                          "fit", "fit_sim", "p_fit"),
+                       n.iter = samples,
                        thin = n.thin)
 
-capture.output(summary(zj_out), HPDinterval(zj_out, prob = 0.95)) %>% 
-  write(., paste0("results/BACI_insect_", 
-                  response, 
-                  "_",
-                  ifelse(ref == 3, "NF", "CR"), 
-                  ".txt"))
+## Fit of mean:
+plot(zj_val$mean_obs,
+     zj_val$mean_sim,
+     xlab = "mean real",
+     ylab = "mean simulated",
+     cex = .05)
+abline(0, 1)
+p <- summary(zj_val$p_mean, mean)
+text(x = 0.6, y = 0.7, paste0("P=", round(as.numeric(p[1]), 4)), cex = 1.5)
+
+## Fit of variance:
+plot(zj_val$cv_obs,
+     zj_val$cv_sim,
+     xlab = "cv real",
+     ylab = "cv simulated",
+     cex = .05)
+abline(0,1)
+p <- summary(zj_val$p_cv, mean)
+text(x = 1, y = .8, paste0("P=", round(as.numeric(p[1]), 4)), cex = 1.5)
+
+## Overall fit:
+plot(zj_val$fit,
+     zj_val$fit_sim,
+     xlab = "ssq real",
+     ylab = "ssq simulated",
+     cex = .05)
+abline(0,1)
+p <- summary(zj_val$p_fit, mean)
+text(x = 0.2, y = 0.4, paste0("P=", round(as.numeric(p[1]), 4)), cex = 1.5)
+
+## 6. Export all 8 intercepts forgraphing --------------------------------------
+
+zj_out <- coda.samples(jm, 
+                       variable.names = "a_bt",
+                       n.iter = samples, 
+                       thin = n.thin)
 
 ## Export for graphing:
 
 zj_out_exp <- as.data.frame(summary(zj_out)$quantiles)
-zj_out_exp$ecdf <- as.vector(apply(combine.mcmc(zj_out),
-                                   2, 
-                                   function(x) 1-ecdf(x)(0)))
 zj_out_exp <- cbind(zj_out_exp, 
-                    "treatment" = levels(if_comb$treatment)[eval])
+                    "treatment" = levels(if_comb$treatment),
+                    "experiment" = c(rep("before", 4), rep("after", 4)))
 
-ind_names <- strsplit(row.names(zj_out_exp), split = "[[]")
-ind_names <- sapply(ind_names, "[", 1)
+## Export:
+write.csv(zj_out_exp, paste0("clean/exp_intercepts_", response, ".csv"))
 
-zj_out_exp <- cbind(zj_out_exp, "indicators" = ind_names)
+## 7. Export BACI indicators ---------------------------------------------------
 
-## Export and adjust name according to the chosen reference.
-zj_out_exp$ref <- paste0("ref_", levels(forest$treatment)[ref])
-write.csv(zj_out_exp, 
-          paste0("clean/BACI_",
-                 response,
-                 "_",
-                 ifelse(ref == 3, "NF", "CR"), 
-                 ".csv"),
-          row.names = FALSE)
+zj_out2 <- coda.samples(jm, 
+                        variable.names = c("BACI", "CI_div", "CI_ctr"),
+                        n.iter = samples, 
+                        thin = n.thin)
+zj_out2 <- combine.mcmc(zj_out2)
+dimnames(zj_out2)[[2]] <- sort(paste0(rep(c("BACI_", "CI_ctr_", "CI_div_"), 2), 
+                                      c("Conventional", "Understory_retention")))
+
+BACI <- as.data.frame(summary(zj_out2)$quantiles)
+BACI$ecdf <- apply(zj_out2, 2, function(x) 1-ecdf(x)(0))
+write.csv(BACI, paste0("results/BACI_insect_", response, ".csv"))
 
 ## -------------------------------END-------------------------------------------
