@@ -1,5 +1,6 @@
 ## This script analyses if trap hapiness is occurring in the case of sticky
-## traps.
+## traps. We tested the year as random and fixed effect term and the rsults were 
+## the same. We then used random effects because predicting is easier.
 ##
 ## First edit: 20200626
 ## Last edit: 20200626
